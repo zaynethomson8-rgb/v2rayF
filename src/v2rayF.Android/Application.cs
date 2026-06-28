@@ -21,6 +21,9 @@ public class V2rayApplication : AvaloniaAndroidApplication<v2rayF.App>
     {
         AppServices.CoreEnvironment = new AndroidCoreEnvironment();
         AppServices.Platform = new AndroidPlatformIntegration();
+        AppServices.CoreProcessHost = new AndroidJavaCoreProcessHost();
+        AndroidEnvironment.UnhandledExceptionRaiser += (_, e) =>
+            global::Android.Util.Log.Error("v2rayF", e.Exception?.ToString() ?? "Unhandled exception");
         base.OnCreate();
         _ = WarmupAsync();
     }

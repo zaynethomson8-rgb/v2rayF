@@ -333,19 +333,19 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (SelectedServer is null)
         {
-            StatusText = "Select a server first.";
+            RunOnUiThread(() => StatusText = "Select a server first.");
             return;
         }
 
         if (!_proxyCore.IsCoreAvailable() || !_proxyCore.HasGeoFiles())
         {
-            await AppServices.CoreEnvironment.EnsureCoreAsync().ConfigureAwait(true);
-            UpdateCoreStatus();
+            await AppServices.CoreEnvironment.EnsureCoreAsync().ConfigureAwait(false);
+            RunOnUiThread(UpdateCoreStatus);
         }
 
         if (!_proxyCore.IsCoreAvailable())
         {
-            StatusText = "Xray core not found.";
+            RunOnUiThread(() => StatusText = "Xray core not found.");
             return;
         }
 
@@ -355,29 +355,36 @@ public partial class MainWindowViewModel : ViewModelBase
         if (settings.RoutingMode == RoutingMode.BypassChina && !_proxyCore.HasGeoFiles())
             settings.RoutingMode = RoutingMode.BypassLan;
 
-        await _settingsStore.SaveAsync(settings).ConfigureAwait(true);
+        await _settingsStore.SaveAsync(settings).ConfigureAwait(false);
 
         var vpnEngaged = false;
         try
         {
-            IsBusy = true;
-            StatusText = $"Connecting to {SelectedServer.Name}…";
+            RunOnUiThread(() =>
+            {
+                IsBusy = true;
+                StatusText = $"Connecting to {SelectedServer.Name}…";
+            });
+
             await ConnectAndroidAsync(SelectedServer, settings, engaged => vpnEngaged = engaged)
-                .ConfigureAwait(true);
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            await SafeTeardownAsync(vpnEngaged).ConfigureAwait(true);
-            StatusText = $"Connection failed: {ex.Message}";
+            await SafeTeardownAsync(vpnEngaged).ConfigureAwait(false);
+            RunOnUiThread(() => StatusText = $"Connection failed: {ex.Message}");
         }
         finally
         {
             if (!IsConnected && vpnEngaged)
-                await SafeTeardownAsync(vpnEngaged: true).ConfigureAwait(true);
+                await SafeTeardownAsync(vpnEngaged: true).ConfigureAwait(false);
 
-            IsBusy = false;
-            OnPropertyChanged(nameof(ConnectButtonText));
-            OnPropertyChanged(nameof(TrayToolTip));
+            RunOnUiThread(() =>
+            {
+                IsBusy = false;
+                OnPropertyChanged(nameof(ConnectButtonText));
+                OnPropertyChanged(nameof(TrayToolTip));
+            });
         }
     }
 
@@ -448,7 +455,8 @@ public partial class MainWindowViewModel : ViewModelBase
         AppSettings settings,
         Action<bool> markVpnEngaged)
     {
-        StatusText = $"Checking {server.Name}…";
+        RunOnUiThread(() => StatusText = $"Checking {server.Name}…");
+
         var probeSettings = new AppSettings
         {
             RoutingMode = settings.RoutingMode,
@@ -458,24 +466,28 @@ public partial class MainWindowViewModel : ViewModelBase
             SubscriptionUrl = settings.SubscriptionUrl
         };
 
-        await _proxyCore.StartAsync(server, probeSettings, null).ConfigureAwait(true);
-        await _proxyCore.StopAsync().ConfigureAwait(true);
+        await _proxyCore.StartAsync(server, probeSettings, null).ConfigureAwait(false);
+        await _proxyCore.StopAsync().ConfigureAwait(false);
 
-        StatusText = "Starting VPN…";
-        var tunFd = await AppServices.Platform.EstablishVpnAsync().ConfigureAwait(true);
+        RunOnUiThread(() => StatusText = "Starting VPN…");
+        var tunFd = await AppServices.Platform.EstablishVpnAsync().ConfigureAwait(false);
         if (tunFd is null)
         {
-            StatusText = GetAndroidVpnFailureMessage();
+            RunOnUiThread(() => StatusText = GetAndroidVpnFailureMessage());
             return;
         }
 
         markVpnEngaged(true);
 
-        StatusText = $"Starting proxy for {server.Name}…";
-        await _proxyCore.StartAsync(server, settings, tunFd).ConfigureAwait(true);
-        await AppServices.Platform.EnableProxyAsync().ConfigureAwait(true);
-        StatusText = $"Connected — {server.Name} (VPN)";
-        IsConnected = true;
+        RunOnUiThread(() => StatusText = $"Starting proxy for {server.Name}…");
+        await _proxyCore.StartAsync(server, settings, tunFd).ConfigureAwait(false);
+        await AppServices.Platform.EnableProxyAsync().ConfigureAwait(false);
+
+        RunOnUiThread(() =>
+        {
+            StatusText = $"Connected — {server.Name} (VPN)";
+            IsConnected = true;
+        });
     }
 
     private async Task SafeTeardownAsync(bool vpnEngaged)
@@ -501,7 +513,7 @@ public partial class MainWindowViewModel : ViewModelBase
             }
         }
 
-        IsConnected = false;
+        RunOnUiThread(() => IsConnected = false);
     }
 
     private Task EmergencyDisconnectAsync() => SafeTeardownAsync(vpnEngaged: true);

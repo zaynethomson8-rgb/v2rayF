@@ -12,4 +12,6 @@ public interface ICoreEnvironment
     string GetCoresDirectory();
 
     string GetDataDirectory();
+
+    ICoreProcessHost CreateProcessHost();
 }
