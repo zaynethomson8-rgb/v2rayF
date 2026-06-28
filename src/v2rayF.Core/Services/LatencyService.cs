@@ -87,21 +87,21 @@ public sealed class LatencyService
         if (!File.Exists(corePath))
             return null;
 
-        var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = corePath,
-                Arguments = $"run -c \"{configPath}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                WorkingDirectory = AppServices.CoreEnvironment.GetCoresDirectory()
-            }
-        };
+        var process = CoreProcessLauncher.CreateProcess(
+            corePath,
+            configPath,
+            AppServices.CoreEnvironment.GetCoresDirectory());
 
-        return process.Start() ? process : null;
+        try
+        {
+            CoreProcessLauncher.Start(process);
+            return process;
+        }
+        catch
+        {
+            process.Dispose();
+            return null;
+        }
     }
 
     private static async Task WaitForCoreReadyAsync(Process process, CancellationToken cancellationToken)
@@ -146,7 +146,7 @@ public sealed class LatencyService
         {
             if (!process.HasExited)
             {
-                process.Kill(entireProcessTree: true);
+                CoreProcessLauncher.Kill(process);
                 using var timeout = new CancellationTokenSource(2000);
                 try
                 {

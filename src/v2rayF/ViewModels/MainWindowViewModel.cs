@@ -316,17 +316,28 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (IsConnected)
         {
-            await DisconnectAsync().ConfigureAwait(true);
+            await RunOnUiThreadAsync(DisconnectAsync).ConfigureAwait(true);
             return;
         }
 
+        if (IsMobile)
+        {
+            await RunOnUiThreadAsync(() => ConnectMobileAsync()).ConfigureAwait(true);
+            return;
+        }
+
+        await ConnectDesktopFlowAsync().ConfigureAwait(true);
+    }
+
+    private async Task ConnectMobileAsync()
+    {
         if (SelectedServer is null)
         {
             StatusText = "Select a server first.";
             return;
         }
 
-        if (!_proxyCore.IsCoreAvailable() || (IsMobile && !_proxyCore.HasGeoFiles()))
+        if (!_proxyCore.IsCoreAvailable() || !_proxyCore.HasGeoFiles())
         {
             await AppServices.CoreEnvironment.EnsureCoreAsync().ConfigureAwait(true);
             UpdateCoreStatus();
@@ -339,13 +350,10 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         var settings = CollectSettings();
-        if (IsMobile)
-        {
-            settings.EnableTunMode = true;
-            settings.EnableSystemProxy = false;
-            if (settings.RoutingMode == RoutingMode.BypassChina && !_proxyCore.HasGeoFiles())
-                settings.RoutingMode = RoutingMode.BypassLan;
-        }
+        settings.EnableTunMode = true;
+        settings.EnableSystemProxy = false;
+        if (settings.RoutingMode == RoutingMode.BypassChina && !_proxyCore.HasGeoFiles())
+            settings.RoutingMode = RoutingMode.BypassLan;
 
         await _settingsStore.SaveAsync(settings).ConfigureAwait(true);
 
@@ -354,16 +362,8 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             IsBusy = true;
             StatusText = $"Connecting to {SelectedServer.Name}…";
-
-            if (IsMobile)
-            {
-                await ConnectAndroidAsync(SelectedServer, settings, engaged => vpnEngaged = engaged)
-                    .ConfigureAwait(true);
-            }
-            else
-            {
-                await ConnectDesktopAsync(SelectedServer, settings).ConfigureAwait(true);
-            }
+            await ConnectAndroidAsync(SelectedServer, settings, engaged => vpnEngaged = engaged)
+                .ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -375,6 +375,48 @@ public partial class MainWindowViewModel : ViewModelBase
             if (!IsConnected && vpnEngaged)
                 await SafeTeardownAsync(vpnEngaged: true).ConfigureAwait(true);
 
+            IsBusy = false;
+            OnPropertyChanged(nameof(ConnectButtonText));
+            OnPropertyChanged(nameof(TrayToolTip));
+        }
+    }
+
+    private async Task ConnectDesktopFlowAsync()
+    {
+        if (SelectedServer is null)
+        {
+            StatusText = "Select a server first.";
+            return;
+        }
+
+        if (!_proxyCore.IsCoreAvailable())
+        {
+            await AppServices.CoreEnvironment.EnsureCoreAsync().ConfigureAwait(true);
+            UpdateCoreStatus();
+        }
+
+        if (!_proxyCore.IsCoreAvailable())
+        {
+            StatusText = "Xray core not found.";
+            return;
+        }
+
+        var settings = CollectSettings();
+        await _settingsStore.SaveAsync(settings).ConfigureAwait(true);
+
+        try
+        {
+            IsBusy = true;
+            StatusText = $"Connecting to {SelectedServer.Name}…";
+            await ConnectDesktopAsync(SelectedServer, settings).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            await SafeTeardownAsync(vpnEngaged: false).ConfigureAwait(true);
+            StatusText = $"Connection failed: {ex.Message}";
+        }
+        finally
+        {
             IsBusy = false;
             OnPropertyChanged(nameof(ConnectButtonText));
             OnPropertyChanged(nameof(TrayToolTip));
@@ -406,7 +448,6 @@ public partial class MainWindowViewModel : ViewModelBase
         AppSettings settings,
         Action<bool> markVpnEngaged)
     {
-        // Verify Xray + server config locally before touching system VPN (keeps internet working).
         StatusText = $"Checking {server.Name}…";
         var probeSettings = new AppSettings
         {
@@ -430,6 +471,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         markVpnEngaged(true);
 
+        StatusText = $"Starting proxy for {server.Name}…";
         await _proxyCore.StartAsync(server, settings, tunFd).ConfigureAwait(true);
         await AppServices.Platform.EnableProxyAsync().ConfigureAwait(true);
         StatusText = $"Connected — {server.Name} (VPN)";

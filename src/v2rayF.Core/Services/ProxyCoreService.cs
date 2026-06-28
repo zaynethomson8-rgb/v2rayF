@@ -72,33 +72,26 @@ public sealed class ProxyCoreService : IAsyncDisposable
         }
 
         var corePath = ResolveCorePath();
-        var startInfo = new ProcessStartInfo
+        _process = CoreProcessLauncher.CreateProcess(corePath, _configPath, ResolveCoresDirectory());
+
+        if (!CoreProcessLauncher.IsAndroid)
         {
-            FileName = corePath,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = ResolveCoresDirectory()
-        };
-        startInfo.ArgumentList.Add("run");
-        startInfo.ArgumentList.Add("-c");
-        startInfo.ArgumentList.Add(_configPath);
+            _process.ErrorDataReceived += OnErrorDataReceived;
+            _process.Exited += OnProcessExited;
+        }
 
-        _process = new Process
+        CoreProcessLauncher.Start(_process, line =>
         {
-            StartInfo = startInfo,
-            EnableRaisingEvents = true
-        };
+            lock (_stderrLock)
+            {
+                if (_recentStderr.Length > 0)
+                    _recentStderr.AppendLine();
+                _recentStderr.Append(line);
+            }
+        });
 
-        _process.ErrorDataReceived += OnErrorDataReceived;
-        _process.Exited += OnProcessExited;
-
-        if (!_process.Start())
-            throw new InvalidOperationException("Failed to start Xray core.");
-
-        _process.BeginErrorReadLine();
-        _ = DrainOutputAsync(_process);
+        if (!CoreProcessLauncher.IsAndroid)
+            _ = DrainOutputAsync(_process);
 
         await WaitForCoreReadyAsync(_process, cancellationToken).ConfigureAwait(false);
 
@@ -106,7 +99,10 @@ public sealed class ProxyCoreService : IAsyncDisposable
         {
             var error = GetRecentStderr();
             CleanupProcess(notify: false);
-            throw new InvalidOperationException(FormatStartupError(error));
+            throw new InvalidOperationException(
+                string.IsNullOrWhiteSpace(error)
+                    ? CoreProcessLauncher.FormatAndroidStartFailure()
+                    : FormatStartupError(error));
         }
 
         ActiveServer = server;
@@ -124,7 +120,7 @@ public sealed class ProxyCoreService : IAsyncDisposable
         {
             if (!process.HasExited)
             {
-                process.Kill(entireProcessTree: true);
+                CoreProcessLauncher.Kill(process);
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(3000);
                 try
@@ -143,8 +139,11 @@ public sealed class ProxyCoreService : IAsyncDisposable
         }
         finally
         {
-            process.ErrorDataReceived -= OnErrorDataReceived;
-            process.Exited -= OnProcessExited;
+            if (!CoreProcessLauncher.IsAndroid)
+            {
+                process.ErrorDataReceived -= OnErrorDataReceived;
+                process.Exited -= OnProcessExited;
+            }
             process.Dispose();
             ActiveServer = null;
             RunningStateChanged?.Invoke(this, false);

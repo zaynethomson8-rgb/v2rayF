@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -12,5 +13,13 @@ public abstract class ViewModelBase : ObservableObject
             action();
         else
             Dispatcher.UIThread.Post(action);
+    }
+
+    protected static async Task RunOnUiThreadAsync(Func<Task> action)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+            await action().ConfigureAwait(true);
+        else
+            await Dispatcher.UIThread.InvokeAsync(action).ConfigureAwait(true);
     }
 }

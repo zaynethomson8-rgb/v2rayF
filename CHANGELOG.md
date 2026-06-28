@@ -5,6 +5,14 @@ All notable changes to v2rayF are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.6] - 2026-06-28
+
+### Fixed
+
+- Android connect crash — VPN permission and UI now run on the main thread (required by Android)
+- Android connect crash — Xray process no longer uses stdout/stderr redirection (unsupported on Android)
+- Connect flow stays on the Avalonia UI thread end-to-end on mobile
+
 ## [1.1.5] - 2026-06-28
 
 ### Fixed
@@ -100,6 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bundled [Xray-core](https://github.com/XTLS/Xray-core) with geo data in release packages
 - GitHub Actions workflow for automated multi-platform releases
 
+[1.1.6]: https://github.com/drmikecrypto/v2rayF/releases/tag/v1.1.6
 [1.1.5]: https://github.com/drmikecrypto/v2rayF/releases/tag/v1.1.5
 [1.1.4]: https://github.com/drmikecrypto/v2rayF/releases/tag/v1.1.4
 [1.1.3]: https://github.com/drmikecrypto/v2rayF/releases/tag/v1.1.3

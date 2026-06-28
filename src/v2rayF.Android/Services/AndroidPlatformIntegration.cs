@@ -1,10 +1,8 @@
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
 using Android.Net;
-using Android.OS;
 using v2rayF.Services;
 
 namespace v2rayF.Android.Services;
@@ -27,7 +25,10 @@ public sealed class AndroidPlatformIntegration : IPlatformIntegration
             platform.LastEstablishError = message;
     }
 
-    public async Task<int?> EstablishVpnAsync(CancellationToken cancellationToken = default)
+    public Task<int?> EstablishVpnAsync(CancellationToken cancellationToken = default) =>
+        AndroidUiThread.InvokeAsync(() => EstablishVpnOnUiThreadAsync(cancellationToken));
+
+    private async Task<int?> EstablishVpnOnUiThreadAsync(CancellationToken cancellationToken)
     {
         LastEstablishError = null;
         var activity = MainActivity.Instance;
@@ -37,16 +38,15 @@ public sealed class AndroidPlatformIntegration : IPlatformIntegration
         var prepare = VpnService.Prepare(activity);
         if (prepare is not null)
         {
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             MainActivity.VpnPermissionTcs = tcs;
             activity.StartActivityForResult(prepare, MainActivity.VpnRequestCode);
-            var granted = await tcs.Task;
-            if (!granted)
+            if (!await tcs.Task.ConfigureAwait(false))
                 return null;
         }
 
         var context = activity.ApplicationContext ?? activity;
-        return await V2rayVpnService.EstablishAsync(context, cancellationToken);
+        return await V2rayVpnService.EstablishAsync(context, cancellationToken).ConfigureAwait(false);
     }
 
     public Task EnableProxyAsync(CancellationToken cancellationToken = default)
@@ -55,12 +55,13 @@ public sealed class AndroidPlatformIntegration : IPlatformIntegration
         return Task.CompletedTask;
     }
 
-    public Task DisableProxyAsync(CancellationToken cancellationToken = default)
-    {
-        var context = Application.Context!;
-        V2rayVpnService.Disconnect(context);
-        context.StopService(new Intent(context, typeof(V2rayForegroundService)));
-        LastProxyMethod = null;
-        return Task.CompletedTask;
-    }
+    public Task DisableProxyAsync(CancellationToken cancellationToken = default) =>
+        AndroidUiThread.InvokeAsync(async () =>
+        {
+            var context = Application.Context!;
+            V2rayVpnService.Disconnect(context);
+            context.StopService(new Intent(context, typeof(V2rayForegroundService)));
+            LastProxyMethod = null;
+            await Task.CompletedTask;
+        });
 }
