@@ -63,4 +63,6 @@ public sealed class AndroidCoreEnvironment : ICoreEnvironment
         await using var output = File.Create(destPath);
         await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
     }
+
+    public ICoreProcessHost CreateProcessHost() => new AndroidJavaCoreProcessHost();
 }

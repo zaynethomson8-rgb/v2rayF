@@ -29,4 +29,6 @@ public sealed class DesktopCoreEnvironment : ICoreEnvironment
         Directory.CreateDirectory(folder);
         return folder;
     }
+
+    public ICoreProcessHost CreateProcessHost() => new ManagedCoreProcessHost();
 }

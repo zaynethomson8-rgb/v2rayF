@@ -5,6 +5,15 @@ All notable changes to v2rayF are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.7] - 2026-06-28
+
+### Fixed
+
+- Android connect crash — Xray now starts via Java `ProcessBuilder` instead of `System.Diagnostics.Process` (fixes force-close on Samsung and other devices)
+- Android connect — proxy core resolves the process host at runtime so the Android host is always used
+- Android connect — status and busy state updates are marshalled to the UI thread after every async step
+- Latency tests on Android use the same Java process launcher (no .NET `Process` on mobile)
+
 ## [1.1.6] - 2026-06-28
 
 ### Fixed

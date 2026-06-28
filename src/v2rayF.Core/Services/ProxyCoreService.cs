@@ -1,8 +1,6 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using v2rayF.Models;
@@ -12,18 +10,16 @@ namespace v2rayF.Services;
 public sealed class ProxyCoreService : IAsyncDisposable
 {
     private readonly ICoreEnvironment _environment;
-    private readonly object _stderrLock = new();
-    private readonly StringBuilder _recentStderr = new();
-    private Process? _process;
     private string? _configPath;
-    private bool _manualStop;
+
+    private static ICoreProcessHost ProcessHost => AppServices.CoreProcessHost;
 
     public ProxyCoreService(ICoreEnvironment environment)
     {
         _environment = environment;
     }
 
-    public bool IsRunning => _process is { HasExited: false };
+    public bool IsRunning => ProcessHost.IsRunning;
 
     public ProxyServer? ActiveServer { get; private set; }
 
@@ -66,42 +62,21 @@ public sealed class ProxyCoreService : IAsyncDisposable
         _configPath = Path.Combine(configDir, "config.json");
         await File.WriteAllTextAsync(_configPath, configJson, cancellationToken).ConfigureAwait(false);
 
-        lock (_stderrLock)
+        await ProcessHost.StartAsync(
+            ResolveCorePath(),
+            _configPath,
+            ResolveCoresDirectory(),
+            cancellationToken).ConfigureAwait(false);
+
+        await WaitForCoreReadyAsync(cancellationToken).ConfigureAwait(false);
+
+        if (ProcessHost.HasExited)
         {
-            _recentStderr.Clear();
-        }
-
-        var corePath = ResolveCorePath();
-        _process = CoreProcessLauncher.CreateProcess(corePath, _configPath, ResolveCoresDirectory());
-
-        if (!CoreProcessLauncher.IsAndroid)
-        {
-            _process.ErrorDataReceived += OnErrorDataReceived;
-            _process.Exited += OnProcessExited;
-        }
-
-        CoreProcessLauncher.Start(_process, line =>
-        {
-            lock (_stderrLock)
-            {
-                if (_recentStderr.Length > 0)
-                    _recentStderr.AppendLine();
-                _recentStderr.Append(line);
-            }
-        });
-
-        if (!CoreProcessLauncher.IsAndroid)
-            _ = DrainOutputAsync(_process);
-
-        await WaitForCoreReadyAsync(_process, cancellationToken).ConfigureAwait(false);
-
-        if (_process.HasExited)
-        {
-            var error = GetRecentStderr();
-            CleanupProcess(notify: false);
+            var error = ProcessHost.GetRecentError();
+            await StopAsync(cancellationToken).ConfigureAwait(false);
             throw new InvalidOperationException(
                 string.IsNullOrWhiteSpace(error)
-                    ? CoreProcessLauncher.FormatAndroidStartFailure()
+                    ? "Xray core exited immediately after start."
                     : FormatStartupError(error));
         }
 
@@ -111,75 +86,18 @@ public sealed class ProxyCoreService : IAsyncDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        var process = Interlocked.Exchange(ref _process, null);
-        if (process is null)
-            return;
-
-        _manualStop = true;
-        try
-        {
-            if (!process.HasExited)
-            {
-                CoreProcessLauncher.Kill(process);
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(3000);
-                try
-                {
-                    await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    // Timed out waiting for exit.
-                }
-            }
-        }
-        catch
-        {
-            // Best effort shutdown.
-        }
-        finally
-        {
-            if (!CoreProcessLauncher.IsAndroid)
-            {
-                process.ErrorDataReceived -= OnErrorDataReceived;
-                process.Exited -= OnProcessExited;
-            }
-            process.Dispose();
-            ActiveServer = null;
-            RunningStateChanged?.Invoke(this, false);
-            _manualStop = false;
-        }
-    }
-
-    public async ValueTask DisposeAsync() => await StopAsync().ConfigureAwait(false);
-
-    private void OnProcessExited(object? sender, EventArgs e)
-    {
-        if (_manualStop)
-            return;
-
+        await ProcessHost.StopAsync(cancellationToken).ConfigureAwait(false);
         ActiveServer = null;
         RunningStateChanged?.Invoke(this, false);
     }
 
-    private void OnErrorDataReceived(object sender, DataReceivedEventArgs e)
-    {
-        if (string.IsNullOrEmpty(e.Data))
-            return;
+    public async ValueTask DisposeAsync() => await StopAsync().ConfigureAwait(false);
 
-        lock (_stderrLock)
-        {
-            if (_recentStderr.Length > 0)
-                _recentStderr.AppendLine();
-            _recentStderr.Append(e.Data);
-        }
-    }
-
-    private static async Task WaitForCoreReadyAsync(Process process, CancellationToken cancellationToken)
+    private async Task WaitForCoreReadyAsync(CancellationToken cancellationToken)
     {
         for (var i = 0; i < 40; i++)
         {
-            if (process.HasExited)
+            if (ProcessHost.HasExited)
                 return;
 
             if (await IsPortOpenAsync("127.0.0.1", XrayConfigBuilder.SocksPort, cancellationToken).ConfigureAwait(false))
@@ -204,46 +122,6 @@ public sealed class ProxyCoreService : IAsyncDisposable
         catch
         {
             return false;
-        }
-    }
-
-    private static async Task DrainOutputAsync(Process process)
-    {
-        try
-        {
-            while (!process.HasExited)
-            {
-                var line = await process.StandardOutput.ReadLineAsync().ConfigureAwait(false);
-                if (line is null)
-                    break;
-            }
-        }
-        catch
-        {
-            // Process ended.
-        }
-    }
-
-    private void CleanupProcess(bool notify)
-    {
-        if (_process is null)
-            return;
-
-        _process.ErrorDataReceived -= OnErrorDataReceived;
-        _process.Exited -= OnProcessExited;
-        _process.Dispose();
-        _process = null;
-        ActiveServer = null;
-
-        if (notify)
-            RunningStateChanged?.Invoke(this, false);
-    }
-
-    private string GetRecentStderr()
-    {
-        lock (_stderrLock)
-        {
-            return _recentStderr.ToString().Trim();
         }
     }
 

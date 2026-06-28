@@ -19,6 +19,7 @@ public sealed class LatencyService
     ];
 
     private readonly ICoreEnvironment _environment;
+    private readonly ICoreProcessHost _speedtestHost;
     private readonly SemaphoreSlim _speedtestLock = new(1, 1);
 
     public const int TimeoutMs = 10000;
@@ -26,6 +27,7 @@ public sealed class LatencyService
     public LatencyService(ICoreEnvironment environment)
     {
         _environment = environment;
+        _speedtestHost = environment.CreateProcessHost();
     }
 
     public async Task<int?> MeasureAsync(ProxyServer server, CancellationToken cancellationToken = default)
@@ -52,7 +54,6 @@ public sealed class LatencyService
     private async Task<int?> MeasureViaCoreAsync(ProxyServer server, CancellationToken cancellationToken)
     {
         await _speedtestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        Process? process = null;
         try
         {
             var configDir = Path.Combine(_environment.GetDataDirectory(), "runtime");
@@ -63,12 +64,18 @@ public sealed class LatencyService
                 XrayConfigBuilder.BuildSpeedtest(server),
                 cancellationToken).ConfigureAwait(false);
 
-            process = StartCore(configPath);
-            if (process is null)
+            var corePath = _environment.GetCorePath();
+            if (!File.Exists(corePath))
                 return null;
 
-            await WaitForCoreReadyAsync(process, cancellationToken).ConfigureAwait(false);
-            if (process.HasExited)
+            await _speedtestHost.StartAsync(
+                corePath,
+                configPath,
+                _environment.GetCoresDirectory(),
+                cancellationToken).ConfigureAwait(false);
+
+            await WaitForCoreReadyAsync(cancellationToken).ConfigureAwait(false);
+            if (_speedtestHost.HasExited)
                 return -1;
 
             return await ProbeThroughSocksAsync(XrayConfigBuilder.SpeedtestSocksPort, cancellationToken)
@@ -76,39 +83,16 @@ public sealed class LatencyService
         }
         finally
         {
-            await StopCoreAsync(process).ConfigureAwait(false);
+            await _speedtestHost.StopAsync(cancellationToken).ConfigureAwait(false);
             _speedtestLock.Release();
         }
     }
 
-    private static Process? StartCore(string configPath)
-    {
-        var corePath = AppServices.CoreEnvironment.GetCorePath();
-        if (!File.Exists(corePath))
-            return null;
-
-        var process = CoreProcessLauncher.CreateProcess(
-            corePath,
-            configPath,
-            AppServices.CoreEnvironment.GetCoresDirectory());
-
-        try
-        {
-            CoreProcessLauncher.Start(process);
-            return process;
-        }
-        catch
-        {
-            process.Dispose();
-            return null;
-        }
-    }
-
-    private static async Task WaitForCoreReadyAsync(Process process, CancellationToken cancellationToken)
+    private async Task WaitForCoreReadyAsync(CancellationToken cancellationToken)
     {
         for (var i = 0; i < 20; i++)
         {
-            if (process.HasExited)
+            if (_speedtestHost.HasExited)
                 return;
 
             if (await IsPortOpenAsync("127.0.0.1", XrayConfigBuilder.SpeedtestSocksPort, cancellationToken)
@@ -134,37 +118,6 @@ public sealed class LatencyService
         catch
         {
             return false;
-        }
-    }
-
-    private static async Task StopCoreAsync(Process? process)
-    {
-        if (process is null)
-            return;
-
-        try
-        {
-            if (!process.HasExited)
-            {
-                CoreProcessLauncher.Kill(process);
-                using var timeout = new CancellationTokenSource(2000);
-                try
-                {
-                    await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    // Timed out waiting for exit.
-                }
-            }
-        }
-        catch
-        {
-            // Best effort shutdown.
-        }
-        finally
-        {
-            process.Dispose();
         }
     }
 
