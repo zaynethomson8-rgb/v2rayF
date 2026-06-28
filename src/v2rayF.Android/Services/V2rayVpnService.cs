@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
+using Android.Content.PM;
 using Android.Net;
 using Android.OS;
 using AndroidX.Core.App;
@@ -51,7 +52,7 @@ public class V2rayVpnService : VpnService
         {
             EnsureChannel();
             var notification = BuildNotification("Establishing VPN…");
-            StartForeground(NotificationId, notification);
+            StartVpnForeground(notification);
 
             TearDownInterface();
 
@@ -67,11 +68,12 @@ public class V2rayVpnService : VpnService
             _establishTcs?.TrySetResult(_interface?.DetachFd());
 
             var active = BuildNotification("Proxy connection active");
-            StartForeground(NotificationId, active);
+            StartVpnForeground(active);
         }
         catch (Exception ex)
         {
-            _establishTcs?.TrySetException(ex);
+            AndroidPlatformIntegration.ReportEstablishError(ex.Message);
+            _establishTcs?.TrySetResult(null);
             StopForeground(true);
             StopSelf();
         }
@@ -138,6 +140,19 @@ public class V2rayVpnService : VpnService
             _establishTcs?.TrySetResult(null);
             return null;
         }
+        catch (Exception ex)
+        {
+            AndroidPlatformIntegration.ReportEstablishError(ex.Message);
+            return null;
+        }
+    }
+
+    private void StartVpnForeground(Notification notification)
+    {
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.UpsideDownCake)
+            StartForeground(NotificationId, notification, ForegroundService.TypeSpecialUse);
+        else
+            StartForeground(NotificationId, notification);
     }
 
     private void EnsureChannel()

@@ -24,6 +24,8 @@ public sealed class DesktopPlatformIntegration : IPlatformIntegration
 
     public string? LastProxyMethod { get; private set; }
 
+    public string? LastEstablishError => null;
+
     public Task<int?> EstablishVpnAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<int?>(null);
 

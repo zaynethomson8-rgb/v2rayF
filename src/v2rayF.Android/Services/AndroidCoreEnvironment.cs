@@ -53,8 +53,11 @@ public sealed class AndroidCoreEnvironment : ICoreEnvironment
 
     private static async Task ExtractAssetIfMissingAsync(string assetName, string destPath, CancellationToken cancellationToken)
     {
-        if (File.Exists(destPath))
+        if (File.Exists(destPath) && new FileInfo(destPath).Length > 0)
             return;
+
+        if (File.Exists(destPath))
+            File.Delete(destPath);
 
         await using var input = Application.Context!.Assets!.Open(assetName);
         await using var output = File.Create(destPath);

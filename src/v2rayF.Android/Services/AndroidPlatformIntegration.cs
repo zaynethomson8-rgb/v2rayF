@@ -19,8 +19,17 @@ public sealed class AndroidPlatformIntegration : IPlatformIntegration
 
     public string? LastProxyMethod { get; private set; }
 
+    public string? LastEstablishError { get; private set; }
+
+    internal static void ReportEstablishError(string? message)
+    {
+        if (AppServices.Platform is AndroidPlatformIntegration platform)
+            platform.LastEstablishError = message;
+    }
+
     public async Task<int?> EstablishVpnAsync(CancellationToken cancellationToken = default)
     {
+        LastEstablishError = null;
         var activity = MainActivity.Instance;
         if (activity is null)
             throw new InvalidOperationException("Activity not ready.");

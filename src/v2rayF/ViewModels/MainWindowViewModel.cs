@@ -123,6 +123,17 @@ public partial class MainWindowViewModel : ViewModelBase
         var servers = await serversTask.ConfigureAwait(true);
         Servers = new ObservableCollection<ProxyServer>(servers);
         SelectedServer ??= Servers.FirstOrDefault();
+
+        try
+        {
+            await AppServices.CoreEnvironment.EnsureCoreAsync().ConfigureAwait(true);
+        }
+        catch
+        {
+            // Shown via UpdateCoreStatus on next line.
+        }
+
+        UpdateCoreStatus();
     }
 
     private void ApplySettingsToView(AppSettings settings)
@@ -175,6 +186,15 @@ public partial class MainWindowViewModel : ViewModelBase
         TunStatus = AppServices.Platform.CanUseTunMode
             ? IsMobile ? "VPN mode — routes all device traffic" : "TUN ready — full-device capture via virtual adapter"
             : AppServices.Platform.TunRequirementMessage;
+    }
+
+    private static string GetAndroidVpnFailureMessage()
+    {
+        var detail = AppServices.Platform?.LastEstablishError;
+        if (!string.IsNullOrWhiteSpace(detail))
+            return $"VPN setup failed: {detail}";
+
+        return "VPN permission is required.";
     }
 
     [RelayCommand]
@@ -303,9 +323,10 @@ public partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        if (!_proxyCore.IsCoreAvailable())
+        if (!_proxyCore.IsCoreAvailable() || (IsMobile && !_proxyCore.HasGeoFiles()))
         {
             await AppServices.CoreEnvironment.EnsureCoreAsync();
+            UpdateCoreStatus();
         }
 
         if (!_proxyCore.IsCoreAvailable())
@@ -334,7 +355,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 tunFd = await AppServices.Platform.EstablishVpnAsync();
                 if (IsMobile && tunFd is null)
                 {
-                    StatusText = "VPN permission is required.";
+                    StatusText = GetAndroidVpnFailureMessage();
                     return;
                 }
             }

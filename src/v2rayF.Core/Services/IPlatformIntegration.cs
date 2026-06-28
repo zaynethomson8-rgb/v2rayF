@@ -13,6 +13,8 @@ public interface IPlatformIntegration
 
     string? LastProxyMethod { get; }
 
+    string? LastEstablishError { get; }
+
     Task<int?> EstablishVpnAsync(CancellationToken cancellationToken = default);
 
     Task EnableProxyAsync(CancellationToken cancellationToken = default);
