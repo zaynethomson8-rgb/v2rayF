@@ -38,7 +38,7 @@ public static class XrayConfigBuilder
             var tunSettings = new JsonObject
             {
                 ["name"] = "v2rayF",
-                ["MTU"] = 1500,
+                ["MTU"] = 1280,
                 ["inet4_address"] = "172.19.0.1/30",
                 ["stack"] = "system"
             };
@@ -79,6 +79,15 @@ public static class XrayConfigBuilder
             },
             ["routing"] = BuildRouting(settings)
         };
+
+        if (settings.EnableTunMode && tunFd is int)
+        {
+            config["dns"] = new JsonObject
+            {
+                ["servers"] = new JsonArray { "1.1.1.1", "8.8.8.8" },
+                ["queryStrategy"] = "UseIPv4"
+            };
+        }
 
         return config.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }

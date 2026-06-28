@@ -58,14 +58,35 @@ public class V2rayVpnService : VpnService
 
             var builder = new Builder(this);
             builder.SetSession("v2rayF");
-            builder.SetMtu(1500);
+            builder.SetMtu(1280);
             builder.AddAddress("172.19.0.1", 30);
             builder.AddRoute("0.0.0.0", 0);
-            builder.AddDnsServer("8.8.8.8");
-            builder.AddDnsServer("1.1.1.1");
+            builder.AddDnsServer("172.19.0.1");
+
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+                builder.SetBlocking(false);
 
             _interface = builder.Establish();
-            _establishTcs?.TrySetResult(_interface?.DetachFd());
+            if (_interface is null)
+            {
+                AndroidPlatformIntegration.ReportEstablishError("VPN interface could not be created.");
+                _establishTcs?.TrySetResult(null);
+                StopForeground(true);
+                StopSelf();
+                return StartCommandResult.NotSticky;
+            }
+
+            var fd = _interface.DetachFd();
+            if (fd < 0)
+            {
+                AndroidPlatformIntegration.ReportEstablishError("VPN file descriptor is invalid.");
+                _establishTcs?.TrySetResult(null);
+                StopForeground(true);
+                StopSelf();
+                return StartCommandResult.NotSticky;
+            }
+
+            _establishTcs?.TrySetResult(fd);
 
             var active = BuildNotification("Proxy connection active");
             StartVpnForeground(active);

@@ -7,6 +7,7 @@ using AndroidX.Core.App;
 using AndroidX.Core.Content;
 using Avalonia.Android;
 using System.Threading.Tasks;
+using v2rayF.Services;
 
 namespace v2rayF.Android;
 
@@ -43,6 +44,9 @@ public class MainActivity : AvaloniaMainActivity
 
     protected override void OnDestroy()
     {
+        if (IsFinishing && AppServices.EmergencyDisconnectAsync is not null)
+            _ = AppServices.EmergencyDisconnectAsync();
+
         if (Instance == this)
             Instance = null;
         base.OnDestroy();

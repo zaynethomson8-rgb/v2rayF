@@ -101,6 +101,9 @@ public partial class MainWindowViewModel : ViewModelBase
             });
         };
 
+        if (IsMobile)
+            AppServices.EmergencyDisconnectAsync = EmergencyDisconnectAsync;
+
         UpdateCoreStatus();
         _ = InitializeAsync();
     }
@@ -313,7 +316,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (IsConnected)
         {
-            await DisconnectAsync();
+            await DisconnectAsync().ConfigureAwait(true);
             return;
         }
 
@@ -325,7 +328,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         if (!_proxyCore.IsCoreAvailable() || (IsMobile && !_proxyCore.HasGeoFiles()))
         {
-            await AppServices.CoreEnvironment.EnsureCoreAsync();
+            await AppServices.CoreEnvironment.EnsureCoreAsync().ConfigureAwait(true);
             UpdateCoreStatus();
         }
 
@@ -340,68 +343,131 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             settings.EnableTunMode = true;
             settings.EnableSystemProxy = false;
+            if (settings.RoutingMode == RoutingMode.BypassChina && !_proxyCore.HasGeoFiles())
+                settings.RoutingMode = RoutingMode.BypassLan;
         }
 
-        await _settingsStore.SaveAsync(settings);
+        await _settingsStore.SaveAsync(settings).ConfigureAwait(true);
 
+        var vpnEngaged = false;
         try
         {
             IsBusy = true;
             StatusText = $"Connecting to {SelectedServer.Name}…";
 
-            int? tunFd = null;
-            if (settings.EnableTunMode)
-            {
-                tunFd = await AppServices.Platform.EstablishVpnAsync();
-                if (IsMobile && tunFd is null)
-                {
-                    StatusText = GetAndroidVpnFailureMessage();
-                    return;
-                }
-            }
-
-            await _proxyCore.StartAsync(SelectedServer, settings, tunFd);
-
             if (IsMobile)
             {
-                await AppServices.Platform.EnableProxyAsync();
-                StatusText = $"Connected — {SelectedServer.Name} (VPN)";
-            }
-            else if (settings.EnableSystemProxy && !settings.EnableTunMode)
-            {
-                await AppServices.Platform.EnableProxyAsync();
-                StatusText = $"Connected — {SelectedServer.Name} (proxy: {AppServices.Platform.LastProxyMethod})";
-            }
-            else if (settings.EnableTunMode)
-            {
-                StatusText = $"Connected — {SelectedServer.Name} (TUN mode)";
+                await ConnectAndroidAsync(SelectedServer, settings, engaged => vpnEngaged = engaged)
+                    .ConfigureAwait(true);
             }
             else
             {
-                StatusText = $"Connected — {SelectedServer.Name} (manual proxy 127.0.0.1:10809)";
+                await ConnectDesktopAsync(SelectedServer, settings).ConfigureAwait(true);
             }
-
-            IsConnected = true;
         }
         catch (Exception ex)
         {
-            await DisconnectAsync();
+            await SafeTeardownAsync(vpnEngaged).ConfigureAwait(true);
             StatusText = $"Connection failed: {ex.Message}";
         }
         finally
         {
+            if (!IsConnected && vpnEngaged)
+                await SafeTeardownAsync(vpnEngaged: true).ConfigureAwait(true);
+
             IsBusy = false;
             OnPropertyChanged(nameof(ConnectButtonText));
             OnPropertyChanged(nameof(TrayToolTip));
         }
     }
 
+    private async Task ConnectDesktopAsync(ProxyServer server, AppSettings settings)
+    {
+        int? tunFd = null;
+        if (settings.EnableTunMode)
+            tunFd = await AppServices.Platform.EstablishVpnAsync().ConfigureAwait(true);
+
+        await _proxyCore.StartAsync(server, settings, tunFd).ConfigureAwait(true);
+
+        if (settings.EnableSystemProxy && !settings.EnableTunMode)
+            await AppServices.Platform.EnableProxyAsync().ConfigureAwait(true);
+
+        StatusText = settings.EnableTunMode
+            ? $"Connected — {server.Name} (TUN mode)"
+            : settings.EnableSystemProxy
+                ? $"Connected — {server.Name} (proxy: {AppServices.Platform.LastProxyMethod})"
+                : $"Connected — {server.Name} (manual proxy 127.0.0.1:10809)";
+
+        IsConnected = true;
+    }
+
+    private async Task ConnectAndroidAsync(
+        ProxyServer server,
+        AppSettings settings,
+        Action<bool> markVpnEngaged)
+    {
+        // Verify Xray + server config locally before touching system VPN (keeps internet working).
+        StatusText = $"Checking {server.Name}…";
+        var probeSettings = new AppSettings
+        {
+            RoutingMode = settings.RoutingMode,
+            CustomDirectRules = settings.CustomDirectRules,
+            EnableTunMode = false,
+            EnableSystemProxy = false,
+            SubscriptionUrl = settings.SubscriptionUrl
+        };
+
+        await _proxyCore.StartAsync(server, probeSettings, null).ConfigureAwait(true);
+        await _proxyCore.StopAsync().ConfigureAwait(true);
+
+        StatusText = "Starting VPN…";
+        var tunFd = await AppServices.Platform.EstablishVpnAsync().ConfigureAwait(true);
+        if (tunFd is null)
+        {
+            StatusText = GetAndroidVpnFailureMessage();
+            return;
+        }
+
+        markVpnEngaged(true);
+
+        await _proxyCore.StartAsync(server, settings, tunFd).ConfigureAwait(true);
+        await AppServices.Platform.EnableProxyAsync().ConfigureAwait(true);
+        StatusText = $"Connected — {server.Name} (VPN)";
+        IsConnected = true;
+    }
+
+    private async Task SafeTeardownAsync(bool vpnEngaged)
+    {
+        try
+        {
+            await _proxyCore.StopAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best effort.
+        }
+
+        if (vpnEngaged || IsMobile)
+        {
+            try
+            {
+                await AppServices.Platform.DisableProxyAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // Best effort.
+            }
+        }
+
+        IsConnected = false;
+    }
+
+    private Task EmergencyDisconnectAsync() => SafeTeardownAsync(vpnEngaged: true);
+
     [RelayCommand]
     private async Task DisconnectAsync()
     {
-        await _proxyCore.StopAsync().ConfigureAwait(true);
-        await AppServices.Platform.DisableProxyAsync().ConfigureAwait(true);
-        IsConnected = false;
+        await SafeTeardownAsync(vpnEngaged: true).ConfigureAwait(true);
         StatusText = "Disconnected";
         OnPropertyChanged(nameof(ConnectButtonText));
         OnPropertyChanged(nameof(TrayToolTip));

@@ -37,16 +37,16 @@ public sealed class AndroidPlatformIntegration : IPlatformIntegration
         var prepare = VpnService.Prepare(activity);
         if (prepare is not null)
         {
-            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tcs = new TaskCompletionSource<bool>();
             MainActivity.VpnPermissionTcs = tcs;
             activity.StartActivityForResult(prepare, MainActivity.VpnRequestCode);
-            var granted = await tcs.Task.ConfigureAwait(false);
+            var granted = await tcs.Task;
             if (!granted)
                 return null;
         }
 
         var context = activity.ApplicationContext ?? activity;
-        return await V2rayVpnService.EstablishAsync(context, cancellationToken).ConfigureAwait(false);
+        return await V2rayVpnService.EstablishAsync(context, cancellationToken);
     }
 
     public Task EnableProxyAsync(CancellationToken cancellationToken = default)

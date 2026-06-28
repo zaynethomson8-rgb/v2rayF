@@ -72,18 +72,22 @@ public sealed class ProxyCoreService : IAsyncDisposable
         }
 
         var corePath = ResolveCorePath();
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = corePath,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = ResolveCoresDirectory()
+        };
+        startInfo.ArgumentList.Add("run");
+        startInfo.ArgumentList.Add("-c");
+        startInfo.ArgumentList.Add(_configPath);
+
         _process = new Process
         {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = corePath,
-                Arguments = $"run -c \"{_configPath}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                WorkingDirectory = ResolveCoresDirectory()
-            },
+            StartInfo = startInfo,
             EnableRaisingEvents = true
         };
 
