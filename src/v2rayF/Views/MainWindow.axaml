@@ -22,9 +22,24 @@
 
     <Grid RowDefinitions="Auto,*,Auto" Margin="20">
         <StackPanel Grid.Row="0" Spacing="12">
-            <TextBlock Text="v2rayF"
-                       FontSize="28"
-                       FontWeight="SemiBold"/>
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="v2rayF"
+                               FontSize="28"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding AppVersionLabel, StringFormat='v{0}'}"
+                               Opacity="0.55" FontSize="12"/>
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Content="{Binding UpdateButtonText}"
+                        Command="{Binding ApplyUpdateCommand}"
+                        IsVisible="{Binding UpdateAvailable}"
+                        IsEnabled="{Binding !IsUpdating}"
+                        Classes="accent"
+                        VerticalAlignment="Center"
+                        Padding="14,8"
+                        MinWidth="100"/>
+            </Grid>
             <TextBlock Text="Proxy hub with routing rules, TUN mode, latency tests, and multi-desktop system proxy."
                        Opacity="0.75"
                        TextWrapping="Wrap"/>

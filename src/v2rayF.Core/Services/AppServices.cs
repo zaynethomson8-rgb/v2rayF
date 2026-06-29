@@ -11,6 +11,8 @@ public static class AppServices
 
     public static ICoreProcessHost CoreProcessHost { get; set; } = new ManagedCoreProcessHost();
 
+    public static IAppUpdater? Updater { get; set; }
+
     /// <summary>Called when the Android activity stops — tear down VPN so network is not left hijacked.</summary>
     public static Func<Task>? EmergencyDisconnectAsync { get; set; }
 }

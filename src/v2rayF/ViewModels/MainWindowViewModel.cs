@@ -21,7 +21,9 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly SubscriptionService _subscriptionService = new();
     private readonly ProxyCoreService _proxyCore = new(AppServices.CoreEnvironment);
     private readonly LatencyService _latencyService = new(AppServices.CoreEnvironment);
+    private readonly UpdateCheckService _updateCheck = new();
     private AppSettings _settings = new();
+    private UpdateOffer? _pendingUpdate;
 
     public bool IsMobile => AppServices.Platform?.IsMobile ?? false;
 
@@ -73,6 +75,23 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _tunStatus = "";
+
+    [ObservableProperty]
+    private bool _updateAvailable;
+
+    [ObservableProperty]
+    private string _updateLabel = "";
+
+    [ObservableProperty]
+    private bool _isUpdating;
+
+    public string AppVersionLabel => AppVersion.Current;
+
+    public string UpdateButtonText => string.IsNullOrWhiteSpace(UpdateLabel)
+        ? "Update"
+        : $"Update {UpdateLabel}";
+
+    partial void OnUpdateLabelChanged(string value) => OnPropertyChanged(nameof(UpdateButtonText));
 
     public bool ShowCustomRules => SelectedRoutingMode?.Mode == RoutingMode.CustomDirect;
 
@@ -137,6 +156,56 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         UpdateCoreStatus();
+        _ = CheckForUpdatesQuietlyAsync();
+    }
+
+    private async Task CheckForUpdatesQuietlyAsync()
+    {
+        if (AppServices.Updater is null)
+            return;
+
+        try
+        {
+            var offer = await _updateCheck.CheckAsync(AppServices.Updater.ReleaseAssetFileName).ConfigureAwait(true);
+            if (offer is null)
+                return;
+
+            _pendingUpdate = offer;
+            UpdateAvailable = true;
+            UpdateLabel = offer.Version;
+            StatusText = $"v{offer.Version} is available — tap Update.";
+        }
+        catch
+        {
+            // Offline or GitHub rate limit — ignore quietly.
+        }
+    }
+
+    [RelayCommand]
+    private async Task ApplyUpdateAsync()
+    {
+        if (_pendingUpdate is null || AppServices.Updater is null || IsUpdating)
+            return;
+
+        IsUpdating = true;
+        IsBusy = true;
+        try
+        {
+            if (IsConnected)
+                await DisconnectAsync().ConfigureAwait(true);
+
+            var progress = new Progress<string>(msg => RunOnUiThread(() => StatusText = msg));
+            await AppServices.Updater.ApplyUpdateAsync(_pendingUpdate, progress).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Update failed: {ex.Message}";
+            IsUpdating = false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private void ApplySettingsToView(AppSettings settings)

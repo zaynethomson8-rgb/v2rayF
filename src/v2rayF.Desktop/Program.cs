@@ -23,6 +23,7 @@ sealed class Program
 
         AppServices.CoreEnvironment = new DesktopCoreEnvironment();
         AppServices.Platform = new DesktopPlatformIntegration();
+        AppServices.Updater = new DesktopAppUpdater();
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
