@@ -319,11 +319,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         RunOnUiThread(() => server.SetLatency(null));
 
-        int? result;
-        if (_proxyCore.IsRunning && _proxyCore.ActiveServer?.Id == server.Id)
-            result = await _latencyService.MeasureViaSocksAsync(XrayConfigBuilder.SocksPort);
-        else
-            result = await _latencyService.MeasureAsync(server);
+        var result = await _latencyService.MeasureAsync(server);
 
         RunOnUiThread(() => server.SetLatency(result));
     }

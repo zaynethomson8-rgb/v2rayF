@@ -120,6 +120,7 @@ public static class ShareLinkParser
             Fingerprint = GetQuery(query, "fp") ?? "chrome",
             PublicKey = GetQuery(query, "pbk") ?? "",
             ShortId = GetQuery(query, "sid") ?? "",
+            SpiderX = GetQuery(query, "spx") ?? "",
             AllowInsecure = GetQuery(query, "allowInsecure") == "1",
             RawLink = link
         };

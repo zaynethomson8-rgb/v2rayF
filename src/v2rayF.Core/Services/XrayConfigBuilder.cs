@@ -70,6 +70,7 @@ public static class XrayConfigBuilder
         var config = new JsonObject
         {
             ["log"] = new JsonObject { ["loglevel"] = "warning" },
+            ["dns"] = BuildDns(),
             ["inbounds"] = inbounds,
             ["outbounds"] = new JsonArray
             {
@@ -80,17 +81,14 @@ public static class XrayConfigBuilder
             ["routing"] = BuildRouting(settings)
         };
 
-        if (settings.EnableTunMode && tunFd is int)
-        {
-            config["dns"] = new JsonObject
-            {
-                ["servers"] = new JsonArray { "1.1.1.1", "8.8.8.8" },
-                ["queryStrategy"] = "UseIPv4"
-            };
-        }
-
         return config.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
+
+    private static JsonObject BuildDns() => new()
+    {
+        ["servers"] = new JsonArray { "1.1.1.1", "8.8.8.8" },
+        ["queryStrategy"] = "UseIPv4"
+    };
 
     public const int SpeedtestSocksPort = 10818;
 
@@ -155,7 +153,16 @@ public static class XrayConfigBuilder
                 rules.Add(new JsonObject
                 {
                     ["type"] = "field",
-                    ["ip"] = new JsonArray { "geoip:private" },
+                    ["ip"] = new JsonArray
+                    {
+                        "10.0.0.0/8",
+                        "172.16.0.0/12",
+                        "192.168.0.0/16",
+                        "127.0.0.0/8",
+                        "169.254.0.0/16",
+                        "224.0.0.0/4",
+                        "240.0.0.0/4"
+                    },
                     ["outboundTag"] = "direct"
                 });
                 break;
@@ -401,7 +408,7 @@ public static class XrayConfigBuilder
                     ["fingerprint"] = string.IsNullOrWhiteSpace(server.Fingerprint) ? "chrome" : server.Fingerprint,
                     ["publicKey"] = server.PublicKey,
                     ["shortId"] = server.ShortId,
-                    ["spiderX"] = string.IsNullOrWhiteSpace(server.Path) ? "/" : server.Path
+                    ["spiderX"] = string.IsNullOrWhiteSpace(server.SpiderX) ? "/" : server.SpiderX
                 };
                 break;
 

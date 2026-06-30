@@ -35,6 +35,12 @@ public sealed class LatencyService
         if (string.IsNullOrWhiteSpace(server.Address) || server.Port <= 0)
             return null;
 
+        // TCP RTT to the node — same metric most clients show (v2rayNG, Hiddify, etc.).
+        var tcp = await MeasureTcpAsync(server, cancellationToken).ConfigureAwait(false);
+        if (tcp.HasValue && tcp.Value >= 0)
+            return tcp;
+
+        // Some nodes block raw TCP probes; fall back to a short proxy path test.
         await _environment.EnsureCoreAsync(cancellationToken).ConfigureAwait(false);
         if (File.Exists(_environment.GetCorePath()))
         {
@@ -43,7 +49,7 @@ public sealed class LatencyService
                 return proxyResult;
         }
 
-        return await MeasureTcpAsync(server, cancellationToken).ConfigureAwait(false);
+        return tcp ?? -1;
     }
 
     public async Task<int?> MeasureViaSocksAsync(int socksPort, CancellationToken cancellationToken = default)
@@ -129,7 +135,7 @@ public sealed class LatencyService
 
         var handler = new SocketsHttpHandler
         {
-            Proxy = new WebProxy($"socks5://127.0.0.1:{socksPort}"),
+            Proxy = new WebProxy($"socks5h://127.0.0.1:{socksPort}"),
             UseProxy = true,
             ConnectTimeout = TimeSpan.FromSeconds(5)
         };

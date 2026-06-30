@@ -5,6 +5,15 @@ All notable changes to v2rayF are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-06-30
+
+### Fixed
+
+- Latency test now reports **TCP RTT to the node** (same metric as v2rayNG/Hiddify), not inflated full-proxy HTTP timing
+- REALITY `spiderX` no longer incorrectly reuses WebSocket `path`; reads `spx` from share links
+- Xray config always includes DNS servers (not only on Android VPN)
+- Bypass LAN routing uses explicit private CIDR ranges instead of `geoip:private` (works without geo files on desktop)
+
 ## [1.2.1] - 2026-06-30
 
 ### Fixed
@@ -153,4 +162,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.1.5]: https://github.com/drmikecrypto/v2rayF/releases/tag/v1.1.5
 [1.1.4]: https://github.com/drmikecrypto/v2rayF/releases/tag/v1.1.4
 [1.1.3]: https://github.com/drmikecrypto/v2rayF/releases/tag/v1.1.3
+[1.2.2]: https://github.com/drmikecrypto/v2rayF/releases/tag/v1.2.2
 [1.2.1]: https://github.com/drmikecrypto/v2rayF/releases/tag/v1.2.1

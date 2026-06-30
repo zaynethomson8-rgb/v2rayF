@@ -40,6 +40,8 @@ public partial class ProxyServer : ObservableObject
 
     public string ShortId { get; set; } = "";
 
+    public string SpiderX { get; set; } = "";
+
     public string Cipher { get; set; } = "";
 
     public bool AllowInsecure { get; set; }
